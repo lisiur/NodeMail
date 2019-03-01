@@ -7,6 +7,12 @@ const path = require("path")
 const schedule = require("node-schedule")
 const logger = require("./logger")
 
+function wait(ms) {
+    return new Promise(res => {
+        setTimeout(res, ms)
+    })
+}
+
 let tryTimes = 0
 const MaxTryTimes = 3
 
@@ -68,71 +74,78 @@ function getOneData() {
 }
 
 // 获取天气提醒
-function getWeatherTips() {
-    let p = new Promise(function(resolve, reject) {
-        superagent.get(WeatherUrl).end(function(err, res) {
-            if (err) {
-                reject(err)
-            }
-            let threeDaysData = []
-            let weatherTip = ""
-            let $ = cheerio.load(res.text)
-            $(".wea_tips").each(function(i, elem) {
-                weatherTip = $(elem)
-                    .find("em")
-                    .text()
-            })
-            resolve(weatherTip)
+function getWeatherTips(res) {
+    let weatherTip = ""
+    let $ = cheerio.load(res.text)
+    $(".wea_tips").each(function(i, elem) {
+        weatherTip = $(elem)
+            .find("em")
+            .text()
+    })
+    return weatherTip
+}
+
+function getWeatherData(res) {
+    let threeDaysData = []
+    let $ = cheerio.load(res.text)
+    $(".forecast .days").each(function(i, elem) {
+        const SingleDay = $(elem).find("li")
+        threeDaysData.push({
+            Day: $(SingleDay[0])
+                .text()
+                .replace(/(^\s*)|(\s*$)/g, ""),
+            WeatherImgUrl: $(SingleDay[1])
+                .find("img")
+                .attr("src"),
+            WeatherText: $(SingleDay[1])
+                .text()
+                .replace(/(^\s*)|(\s*$)/g, ""),
+            Temperature: $(SingleDay[2])
+                .text()
+                .replace(/(^\s*)|(\s*$)/g, ""),
+            WindDirection: $(SingleDay[3])
+                .find("em")
+                .text()
+                .replace(/(^\s*)|(\s*$)/g, ""),
+            WindLevel: $(SingleDay[3])
+                .find("b")
+                .text()
+                .replace(/(^\s*)|(\s*$)/g, ""),
+            Pollution: $(SingleDay[4])
+                .text()
+                .replace(/(^\s*)|(\s*$)/g, ""),
+            PollutionLevel: $(SingleDay[4])
+                .find("strong")
+                .attr("class"),
         })
     })
-    return p
+    return threeDaysData
 }
 
 // 获取天气预报
-function getWeatherData() {
-    let p = new Promise(function(resolve, reject) {
+function getWeather(tryTimes = 0) {
+    const MaxTryTimes = 10
+    return new Promise(function(resolve, reject) {
         superagent.get(WeatherUrl).end(function(err, res) {
             if (err) {
-                reject(err)
+                tryTimes += 1
+                if (tryTimes > MaxTryTimes) {
+                    reject(err)
+                }
+                resolve(wait(1000).then(() => getWeather(tryTimes)))
             }
-            let threeDaysData = []
-            let weatherTip = ""
-            let $ = cheerio.load(res.text)
-            $(".forecast .days").each(function(i, elem) {
-                const SingleDay = $(elem).find("li")
-                threeDaysData.push({
-                    Day: $(SingleDay[0])
-                        .text()
-                        .replace(/(^\s*)|(\s*$)/g, ""),
-                    WeatherImgUrl: $(SingleDay[1])
-                        .find("img")
-                        .attr("src"),
-                    WeatherText: $(SingleDay[1])
-                        .text()
-                        .replace(/(^\s*)|(\s*$)/g, ""),
-                    Temperature: $(SingleDay[2])
-                        .text()
-                        .replace(/(^\s*)|(\s*$)/g, ""),
-                    WindDirection: $(SingleDay[3])
-                        .find("em")
-                        .text()
-                        .replace(/(^\s*)|(\s*$)/g, ""),
-                    WindLevel: $(SingleDay[3])
-                        .find("b")
-                        .text()
-                        .replace(/(^\s*)|(\s*$)/g, ""),
-                    Pollution: $(SingleDay[4])
-                        .text()
-                        .replace(/(^\s*)|(\s*$)/g, ""),
-                    PollutionLevel: $(SingleDay[4])
-                        .find("strong")
-                        .attr("class"),
-                })
-            })
-            resolve(threeDaysData)
+            const weatherTips = getWeatherTips(res)
+            const threeDaysData = getWeatherData(res)
+            if (!weatherTips && threeDaysData.length === 0) {
+                tryTimes += 1
+                if (tryTimes > MaxTryTimes) {
+                    reject(err)
+                }
+                resolve(wait(1000).then(() => getWeather(tryTimes)))
+            }
+            resolve([weatherTips, threeDaysData])
         })
     })
-    return p
 }
 
 // 发动邮件
@@ -188,11 +201,11 @@ function getAllDataAndSendMail() {
     HtmlData["lastDay"] = lastDay
     HtmlData["todaystr"] = todaystr
 
-    Promise.all([getOneData(), getWeatherTips(), getWeatherData()])
+    Promise.all([getOneData(), getWeather()])
         .then(function(data) {
             HtmlData["todayOneData"] = data[0]
-            HtmlData["weatherTip"] = data[1]
-            HtmlData["threeDaysData"] = data[2]
+            HtmlData["weatherTip"] = data[1][0]
+            HtmlData["threeDaysData"] = data[1][1]
             sendMail(HtmlData)
         })
         .catch(function(err) {
@@ -218,6 +231,7 @@ logger(
         .toString()
         .padStart(2, "0")}:${emailMinute.toString().padStart(2, "0")}]`
 )
+getAllDataAndSendMail()
 let j = schedule.scheduleJob(rule, function() {
     logger("开始执行任务")
     tryTimes = 0
