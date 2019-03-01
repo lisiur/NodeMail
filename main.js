@@ -231,7 +231,7 @@ logger(
         .toString()
         .padStart(2, "0")}:${emailMinute.toString().padStart(2, "0")}]`
 )
-getAllDataAndSendMail()
+
 let j = schedule.scheduleJob(rule, function() {
     logger("开始执行任务")
     tryTimes = 0
