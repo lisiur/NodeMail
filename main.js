@@ -7,6 +7,9 @@ const path = require("path")
 const schedule = require("node-schedule")
 const logger = require("./logger")
 
+let tryTimes = 0
+const MaxTryTimes = 3
+
 //配置项
 const config = JSON.parse(fs.readFileSync("./config.json"))
 
@@ -154,11 +157,18 @@ function sendMail(HtmlData) {
     }
     transporter.sendMail(mailOptions, (error, info = {}) => {
         if (error) {
-            console.log(error)
+            logger(error)
+            tryTimes += 1
+            if (tryTimes > MaxTryTimes) {
+                logger("已超过最大尝试次数，本次发送任务失败")
+                // TODO: 提醒发送人
+                return
+            }
             sendMail(HtmlData) //再次发送
+            return
         }
-        console.log("邮件发送成功", info.messageId)
-        console.log("静等下一次发送")
+        logger("邮件发送成功", info.messageId)
+        logger("静等下一次发送")
     })
 }
 
@@ -167,7 +177,6 @@ function getAllDataAndSendMail() {
     let HtmlData = {}
     // how long with
     let today = new Date()
-    console.log(today)
     let initDay = new Date(startDay)
     let lastDay = Math.floor((today - initDay) / 1000 / 60 / 60 / 24)
     let todaystr =
@@ -187,8 +196,15 @@ function getAllDataAndSendMail() {
             sendMail(HtmlData)
         })
         .catch(function(err) {
+            tryTimes += 1
+            if (tryTimes > MaxTryTimes) {
+                logger("已超过最大尝试次数，本次发送任务失败")
+                // TODO: 提醒发送人
+                return
+            }
+            logger("获取数据失败： ", err)
+            logger(`重新尝试发送（${tryTimes}）...`)
             getAllDataAndSendMail() //再次获取
-            console.log("获取数据失败： ", err)
         })
 }
 
@@ -197,8 +213,13 @@ rule.dayOfWeek = [0, new schedule.Range(1, 6)]
 rule.hour = emailHour
 rule.minute = emailMinute
 
-logger("NodeMail: 开始等待目标时刻...")
+logger(
+    `等待目标时刻[${emailHour
+        .toString()
+        .padStart(2, "0")}:${emailMinute.toString().padStart(2, "0")}]`
+)
 let j = schedule.scheduleJob(rule, function() {
-    logger.info("执行任务")
+    logger("开始执行任务")
+    tryTimes = 0
     getAllDataAndSendMail()
 })
