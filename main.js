@@ -1,10 +1,12 @@
-const superagent = require("superagent") //发送网络请求获取DOM
-const cheerio = require("cheerio") // 能够像Jquery一样方便获取DOM节点
-const nodemailer = require("nodemailer") //发送邮件的node插件
-const ejs = require("ejs") //ejs模版引擎
-const fs = require("fs") //文件读写
-const path = require("path") //路径配置
-const schedule = require("node-schedule") //定时器任务库
+const superagent = require("superagent")
+const cheerio = require("cheerio")
+const nodemailer = require("nodemailer")
+const ejs = require("ejs")
+const fs = require("fs")
+const path = require("path")
+const schedule = require("node-schedule")
+const logger = require("./logger")
+
 //配置项
 const config = JSON.parse(fs.readFileSync("./config.json"))
 
@@ -195,8 +197,8 @@ rule.dayOfWeek = [0, new schedule.Range(1, 6)]
 rule.hour = emailHour
 rule.minute = emailMinute
 
-console.log("NodeMail: 开始等待目标时刻...")
+logger("NodeMail: 开始等待目标时刻...")
 let j = schedule.scheduleJob(rule, function() {
-    console.log("执行任务")
+    logger.info("执行任务")
     getAllDataAndSendMail()
 })
