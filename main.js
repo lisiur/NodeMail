@@ -195,8 +195,6 @@ rule.dayOfWeek = [0, new schedule.Range(1, 6)]
 rule.hour = emailHour
 rule.minute = emailMinute
 
-getAllDataAndSendMail()
-
 console.log("NodeMail: 开始等待目标时刻...")
 let j = schedule.scheduleJob(rule, function() {
     console.log("执行任务")
